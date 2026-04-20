@@ -1,0 +1,38 @@
+{
+  "name": "lia-customer-agents",
+  "version": "0.1.0",
+  "description": "Biblioteca de agentes jurídicos (orquestrador + triagem + consulta processual) com OpenAI Agents SDK, consumível pela edge function existente.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.8.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}
