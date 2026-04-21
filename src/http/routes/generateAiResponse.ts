@@ -154,7 +154,7 @@ async function handleGenerate(
       env,
     );
 
-    await maybeSendInitialClientMessage({
+    const initialMessageResult = await maybeSendInitialClientMessage({
       conversaId,
       clienteId,
       numeroWhatsapp,
@@ -162,6 +162,13 @@ async function handleGenerate(
       lastResponseId,
       env,
     });
+
+    if (initialMessageResult?.error) {
+      const status =
+        initialMessageResult.error === "Conversation not found" ? 404 : 409;
+      res.status(status).json({ error: initialMessageResult.error });
+      return;
+    }
 
     const calendarConnectionId = await resolveCalendarConnection(
       organizacaoId,
@@ -444,10 +451,18 @@ async function buildAgentInputs(
   return inputs;
 }
 
+interface InitialMessageOutcome {
+  error?: string;
+}
+
 /**
  * Quando a conversa começa (sem `lastResponseId` salvo), envia uma mensagem
  * inicial humanizada com o nome do cliente. Idempotente: só envia se não
  * houver mensagem do chatbot no atendimento atual.
+ *
+ * Retorna `{ error }` quando o `resolveWhatsAppInstance` falha (`Conversation
+ * not found` ou instância ausente) — o chamador responde com 404/409, igual
+ * ao fluxo principal. Qualquer outro caso retorna `undefined`.
  */
 async function maybeSendInitialClientMessage(params: {
   conversaId: string;
@@ -456,8 +471,8 @@ async function maybeSendInitialClientMessage(params: {
   instancia?: string | undefined;
   lastResponseId: string | null;
   env: EnvConfig;
-}): Promise<void> {
-  if (params.lastResponseId || !params.clienteId) return;
+}): Promise<InitialMessageOutcome | undefined> {
+  if (params.lastResponseId || !params.clienteId) return undefined;
 
   const supabase = getSupabaseClient(params.env);
 
@@ -469,7 +484,7 @@ async function maybeSendInitialClientMessage(params: {
     .order("iniciado_em", { ascending: false })
     .maybeSingle<{ iniciado_em: string }>();
 
-  if (!activeService) return;
+  if (!activeService) return undefined;
 
   const { data: existing } = await supabase
     .from("whatsapp_mensagens")
@@ -479,7 +494,7 @@ async function maybeSendInitialClientMessage(params: {
     .gte("created_at", activeService.iniciado_em)
     .limit(1);
 
-  if (existing && existing.length > 0) return;
+  if (existing && existing.length > 0) return undefined;
 
   const { data: pessoa } = await supabase
     .from("pessoas")
@@ -505,20 +520,24 @@ async function maybeSendInitialClientMessage(params: {
     );
 
   if (instanceError) {
-    console.warn(
-      `⚠️ Não foi possível enviar mensagem inicial: ${instanceError}`,
-    );
-    return;
+    return { error: instanceError };
   }
 
-  if (params.numeroWhatsapp) {
-    await sendEvolutionMessage(
-      resolvedInstancia,
-      params.numeroWhatsapp,
-      initialMessage,
-      params.env,
+  if (!params.numeroWhatsapp) {
+    console.warn(
+      "⚠️ Mensagem inicial salva mas não enviada: numeroWhatsapp ausente no payload.",
     );
+    return undefined;
   }
+
+  await sendEvolutionMessage(
+    resolvedInstancia,
+    params.numeroWhatsapp,
+    initialMessage,
+    params.env,
+  );
+
+  return undefined;
 }
 
 async function resolveCalendarConnection(
