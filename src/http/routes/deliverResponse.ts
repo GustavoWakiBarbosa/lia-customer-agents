@@ -85,13 +85,15 @@ async function handleDeliver(
       conversaId = conversa.id;
     }
 
-    const { data: conversaOrg } = await supabase
+    const { data: conversaOrg, error: conversaOrgError } = await supabase
       .from("whatsapp_conversas")
       .select("organization_id")
       .eq("id", conversaId)
-      .single<{ organization_id: string }>();
+      .maybeSingle<{ organization_id: string }>();
 
-    if (!conversaOrg) {
+    if (conversaOrgError) throw conversaOrgError;
+
+    if (!conversaOrg?.organization_id) {
       res.status(404).json({ error: "Conversation organization not found" });
       return;
     }
