@@ -109,6 +109,14 @@ async function handleWebhook(
 
   const organizationId = activeInstance.organization_id;
 
+  if (!organizationId) {
+    res.status(404).json({
+      error: "Organization not found for instance",
+      instance: body.instance,
+    });
+    return;
+  }
+
   let conversa: WhatsappConversa | null = await getConversaByPhoneNumber(
     phoneNumber,
     organizationId,
@@ -307,7 +315,8 @@ async function processAudioMessage(
 
     if (
       !body.data.key.fromMe &&
-      conversa.status === "em_atendimento_chatbot"
+      conversa.status === "em_atendimento_chatbot" &&
+      conversa.chatbot_ativo
     ) {
       const errorMessage = `Desculpe, o áudio enviado é muito grande (${sizeValidation.sizeMB}MB). Por favor, envie um áudio menor ou digite sua mensagem. 😊`;
       await sendAndStoreAutoReply(
@@ -343,7 +352,10 @@ async function processAudioMessage(
     state.shouldEnqueueToAI = false;
     state.messageContent = "";
 
-    if (conversa.status === "em_atendimento_chatbot") {
+    if (
+      conversa.status === "em_atendimento_chatbot" &&
+      conversa.chatbot_ativo
+    ) {
       const message = `Desculpe, o formato de áudio enviado não é suportado. Por favor, tente enviar em outro formato ou digite sua mensagem. 😊`;
       await sendAndStoreAutoReply(
         instanceName,
@@ -565,7 +577,18 @@ async function maybeEnfileirarChatbot(
     state.shouldEnqueueToAI &&
     state.messageContent.trim() !== "";
 
-  if (!podeEnfileirar) return;
+  if (!podeEnfileirar) {
+    if (conversa.status === "em_atendimento_humano") {
+      console.info(
+        `ℹ️ Conversa ${conversa.id} em atendimento humano — não enfileira chatbot.`,
+      );
+    } else if (conversa.status !== "em_atendimento_chatbot") {
+      console.info(
+        `ℹ️ Mensagem não enfileirada: status=${conversa.status} chatbot_ativo=${conversa.chatbot_ativo} fromMe=${body.data.key.fromMe}`,
+      );
+    }
+    return;
+  }
 
   const phoneData = handlePhoneNumber(
     remoteJid.replace(/@.*/, "").replace(/:.*/, ""),
