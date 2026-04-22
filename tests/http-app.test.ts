@@ -22,7 +22,7 @@ const env: EnvConfig = {
   googleCloudTasksLocation: "us-central1",
   chatbotQueueName: "lia",
   selfPublicBaseUrl: "https://self.example.com",
-  chatbotQueueDelaySeconds: 22,
+  chatbotQueueDelaySeconds: 4,
   whatsappStorageBucket: "whatsapp-files",
   followup30minSeconds: 1800,
   followup24hSeconds: 86400,

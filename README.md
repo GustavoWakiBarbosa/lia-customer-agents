@@ -13,7 +13,7 @@ Evolution API --webhook--> POST /webhook-evolution  (Cloud Run)
                                 |
                                 +--> persiste em whatsapp_mensagens
                                 +--> upload de mídia em Supabase Storage
-                                +--> enfileira no Cloud Tasks (~22s)
+                                +--> enfileira no Cloud Tasks (~4s)
                                             |
                                             v
                             POST /generate-ai-response (Cloud Run)
@@ -148,7 +148,7 @@ Códigos de erro:
 | `EVOLUTION_API_URL` | **sim** | URL base da Evolution (sem barra final). |
 | `EVOLUTION_API_KEY` | **sim** | API key da Evolution (header `apikey`). |
 
-### Cloud Tasks (agregação de mensagens, ~22s)
+### Cloud Tasks (agregação de mensagens, ~4s)
 
 | Variável | Obrigatória | Descrição |
 | --- | --- | --- |
@@ -156,7 +156,7 @@ Códigos de erro:
 | `SELF_PUBLIC_BASE_URL` | **sim** | URL pública deste serviço (Cloud Run). Ex.: `https://lia-agents-XXXX-uc.a.run.app`. Usada como `targetUrl` da task. |
 | `GOOGLE_CLOUD_TASKS_LOCATION` | não | Default: `us-central1`. |
 | `CHATBOT_QUEUE_NAME` | não | Default: `lia`. |
-| `CHATBOT_QUEUE_DELAY_SECONDS` | não | Default: `22`. |
+| `CHATBOT_QUEUE_DELAY_SECONDS` | não | Default: `4`. |
 
 ### Follow-ups
 

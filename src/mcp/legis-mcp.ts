@@ -19,6 +19,12 @@ export interface BuildLegisMcpToolParams {
   readonly env: EnvConfig;
   /** Contexto do run atual. Headers do MCP são derivados daqui. */
   readonly context: AgentRunContext;
+  /**
+   * Restringe quais tools do MCP o agente enxerga. Quando omitido, o agente
+   * enxerga todas as tools expostas pelo servidor. Útil para orquestrador
+   * receber apenas `getPerson`, enquanto `process_info` tem acesso total.
+   */
+  readonly allowedTools?: ReadonlyArray<string>;
 }
 
 /**
@@ -62,7 +68,7 @@ export function buildLegisMcpHeaders(
 export function buildLegisMcpTool(
   params: BuildLegisMcpToolParams,
 ): HostedMCPTool {
-  const { env } = params;
+  const { env, allowedTools } = params;
 
   if (!env.mcpServerUrl) {
     throw new Error(
@@ -76,5 +82,8 @@ export function buildLegisMcpTool(
     serverDescription: LEGIS_MCP_SERVER_DESCRIPTION,
     headers: buildLegisMcpHeaders(params),
     requireApproval: "never",
+    ...(allowedTools && allowedTools.length > 0
+      ? { allowedTools: [...allowedTools] }
+      : {}),
   });
 }

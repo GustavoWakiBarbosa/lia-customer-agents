@@ -78,7 +78,7 @@ export interface EnvConfig {
 const DEFAULT_MODEL = "gpt-5";
 /** Porta local padrão (evita 8080 e 3000). Em Cloud Run, `PORT` é definido pela plataforma. */
 const DEFAULT_PORT = 3333;
-const DEFAULT_QUEUE_DELAY_SECONDS = 22;
+const DEFAULT_QUEUE_DELAY_SECONDS = 4;
 const DEFAULT_FOLLOWUP_30MIN_SECONDS = 1800;
 const DEFAULT_FOLLOWUP_24H_SECONDS = 86400;
 const DEFAULT_STORAGE_BUCKET = "whatsapp-files";
