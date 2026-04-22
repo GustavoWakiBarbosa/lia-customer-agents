@@ -1,0 +1,182 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import type { ChatbotAiConfig } from "../src/db/chatbotAiConfig.js";
+import {
+  PROCESS_INFO_BASE_INSTRUCTIONS,
+  PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS,
+} from "../src/agents/instructions/process-info.instructions.js";
+import { __resetInstructionsCacheForTests } from "../src/agents/instructions/process-info.instructionsCache.js";
+import { buildProcessInfoInstructions } from "../src/agents/instructions/process-info.personalization.js";
+
+beforeEach(() => {
+  __resetInstructionsCacheForTests();
+});
+
+const TRANSHIPMENT_HEADING = "### REGRA ESPECIAL: Transbordo com Opção de Agendamento";
+
+function makeConfig(overrides: Partial<ChatbotAiConfig> = {}): ChatbotAiConfig {
+  return {
+    tom_voz: "profissional",
+    vocabulario: "leigo",
+    tipo_atualizacao: "publicacao",
+    palavras_chave_filtro: [],
+    ...overrides,
+  };
+}
+
+describe("buildProcessInfoInstructions — sem config", () => {
+  it("retorna BASE + DEFAULT_STYLE quando config é null e não há calendário", () => {
+    const result = buildProcessInfoInstructions({
+      config: null,
+      calendarConnectionId: undefined,
+    });
+
+    expect(result).toContain(PROCESS_INFO_BASE_INSTRUCTIONS);
+    expect(result).toContain(PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS);
+    expect(result).not.toContain(TRANSHIPMENT_HEADING);
+    expect(result).toBe(
+      PROCESS_INFO_BASE_INSTRUCTIONS + PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS,
+    );
+  });
+
+  it("anexa bloco de transbordo quando calendarConnectionId está presente", () => {
+    const result = buildProcessInfoInstructions({
+      config: null,
+      calendarConnectionId: "cal-1",
+    });
+
+    expect(result).toContain(PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS);
+    expect(result).toContain(TRANSHIPMENT_HEADING);
+  });
+});
+
+describe("buildProcessInfoInstructions — tom_voz", () => {
+  it("inclui bloco profissional e exclui demais", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({ tom_voz: "profissional" }),
+    });
+
+    expect(result).toContain(
+      "Tom: Formal, objetivo e claro. Use linguagem simples",
+    );
+    expect(result).toContain("Seja direto e profissional");
+    expect(result).not.toContain("Acolhedor, empático");
+    expect(result).not.toContain("Enérgico, confiante e proativo");
+  });
+
+  it("inclui bloco empatico e exclui demais", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({ tom_voz: "empatico" }),
+    });
+
+    expect(result).toContain("Acolhedor, empático e compreensivo");
+    expect(result).not.toContain("Seja direto e profissional");
+    expect(result).not.toContain("Enérgico, confiante e proativo");
+  });
+
+  it("inclui bloco energico e exclui demais", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({ tom_voz: "energico" }),
+    });
+
+    expect(result).toContain("Enérgico, confiante e proativo");
+    expect(result).not.toContain("Acolhedor, empático");
+    expect(result).not.toContain("Seja direto e profissional");
+  });
+});
+
+describe("buildProcessInfoInstructions — vocabulario", () => {
+  it("inclui bloco leigo e exclui intermediario", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({ vocabulario: "leigo" }),
+    });
+
+    expect(result).toContain('Evite palavras como "petição inicial"');
+    expect(result).not.toContain(
+      "Você pode usar termos técnicos essenciais",
+    );
+  });
+
+  it("inclui bloco intermediario e exclui leigo", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({ vocabulario: "intermediario" }),
+    });
+
+    expect(result).toContain("Você pode usar termos técnicos essenciais");
+    expect(result).not.toContain('Evite palavras como "petição inicial"');
+  });
+});
+
+describe("buildProcessInfoInstructions — tipo_atualizacao", () => {
+  it("inclui bloco publicacao com palavras-chave interpoladas", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({
+        tipo_atualizacao: "publicacao",
+        palavras_chave_filtro: ["sigilo", "menor", "valor"],
+      }),
+    });
+
+    expect(result).toContain(
+      "Informe APENAS sobre publicações oficiais no Diário de Justiça",
+    );
+    expect(result).toContain("(sigilo, menor, valor)");
+    expect(result).not.toContain("Informe sobre TODAS as movimentações");
+  });
+
+  it("inclui bloco todas com palavras-chave interpoladas", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({
+        tipo_atualizacao: "todas",
+        palavras_chave_filtro: ["sigilo"],
+      }),
+    });
+
+    expect(result).toContain("Informe sobre TODAS as movimentações");
+    expect(result).toContain("(sigilo)");
+    expect(result).not.toContain("Informe APENAS sobre publicações oficiais");
+  });
+
+  it("interpola lista vazia como `()` quando não há palavras-chave", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({
+        tipo_atualizacao: "publicacao",
+        palavras_chave_filtro: [],
+      }),
+    });
+
+    expect(result).toContain("termos sensíveis ()");
+  });
+});
+
+describe("buildProcessInfoInstructions — composição completa", () => {
+  it("compõe BASE + estilo + vocab + updates + transbordo na ordem correta", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig({
+        tom_voz: "empatico",
+        vocabulario: "intermediario",
+        tipo_atualizacao: "todas",
+        palavras_chave_filtro: ["urgência"],
+      }),
+      calendarConnectionId: "cal-1",
+    });
+
+    const baseIdx = result.indexOf("# Persona");
+    const estiloIdx = result.indexOf("Acolhedor, empático");
+    const vocabIdx = result.indexOf("Você pode usar termos técnicos");
+    const updatesIdx = result.indexOf("TODAS as movimentações");
+    const transbordoIdx = result.indexOf(TRANSHIPMENT_HEADING);
+
+    expect(baseIdx).toBeGreaterThanOrEqual(0);
+    expect(estiloIdx).toBeGreaterThan(baseIdx);
+    expect(vocabIdx).toBeGreaterThan(estiloIdx);
+    expect(updatesIdx).toBeGreaterThan(vocabIdx);
+    expect(transbordoIdx).toBeGreaterThan(updatesIdx);
+  });
+
+  it("não substitui o bloco default ao receber config (sem default + com config)", () => {
+    const result = buildProcessInfoInstructions({
+      config: makeConfig(),
+    });
+
+    expect(result).not.toContain(PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS);
+  });
+});
