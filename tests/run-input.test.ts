@@ -4,7 +4,7 @@ import { RunInputSchema } from "../src/types.js";
 describe("RunInputSchema", () => {
   const validInput = {
     userMessage: "Olá, preciso de ajuda",
-    conversationId: "conv-1",
+    conversaId: "conv-platform-1",
     organizationId: "org-1",
     clientId: "cli-1",
   };
@@ -12,20 +12,20 @@ describe("RunInputSchema", () => {
   it("accepts a minimal valid payload", () => {
     const parsed = RunInputSchema.parse(validInput);
     expect(parsed.userMessage).toBe("Olá, preciso de ajuda");
-    expect(parsed.conversationId).toBe("conv-1");
+    expect(parsed.conversaId).toBe("conv-platform-1");
     expect(parsed.calendarConnectionId).toBeUndefined();
-    expect(parsed.previousResponseId).toBeUndefined();
+    expect(parsed.conversationId).toBeUndefined();
   });
 
   it("accepts all optional fields when provided", () => {
     const parsed = RunInputSchema.parse({
       ...validInput,
+      conversationId: "conv_openai_1",
       calendarConnectionId: "cal-1",
-      previousResponseId: "resp_123",
       extra: { clientName: "Maria" },
     });
+    expect(parsed.conversationId).toBe("conv_openai_1");
     expect(parsed.calendarConnectionId).toBe("cal-1");
-    expect(parsed.previousResponseId).toBe("resp_123");
     expect(parsed.extra).toEqual({ clientName: "Maria" });
   });
 

@@ -6,12 +6,15 @@ import {
 } from "express";
 import type { EnvConfig } from "../../config/env.js";
 import { getSupabaseClient } from "../../db/client.js";
-import { ensureActiveService } from "../../db/atendimentos.js";
+import {
+  ensureActiveService,
+  setActiveServiceOpenAiConversationId,
+} from "../../db/atendimentos.js";
 import { updateConversationStatus } from "../../db/conversations.js";
 import { saveChatbotMessage } from "../../db/messages.js";
 import { insertWhatsappConversationResponse } from "../../db/responses.js";
 import { transcribeAudioFromStorage } from "../../services/audioTranscription.js";
-import { getLastResponseIfActive } from "../../services/conversationContext.js";
+import { getActiveServiceSessionContext } from "../../services/conversationContext.js";
 import { shouldInterceptMessage } from "../../services/conversationFlowInterceptor.js";
 import { sendEvolutionMessage } from "../../services/evolutionApi.js";
 import {
@@ -128,6 +131,13 @@ async function handleGenerate(
     return;
   }
 
+  /** Preenchido após carregar contexto da sessão OpenAI — usado no `catch`. */
+  let openAiSessionContext: {
+    openAiConversationId: string | null;
+    lastResponseId: string | null;
+    chainDecisionReason: string;
+  } | null = null;
+
   try {
     logGenerateAi("generate_ai_request", {
       conversaId,
@@ -188,18 +198,27 @@ async function handleGenerate(
       await ensureActiveService(conversaId, organizacaoId, env);
     }
 
-    const { lastResponseId, isNewService, chainDecisionReason } =
-      await getLastResponseIfActive(
+    const {
+      openAiConversationId,
+      lastResponseId,
+      isNewService,
+      chainDecisionReason,
+    } = await getActiveServiceSessionContext(
       conversaId,
       env,
     );
+    openAiSessionContext = {
+      openAiConversationId,
+      lastResponseId,
+      chainDecisionReason,
+    };
 
     const initialMessageResult = await maybeSendInitialClientMessage({
       conversaId,
       clienteId,
       numeroWhatsapp,
       instancia,
-      lastResponseId,
+      hasOpenAiConversation: Boolean(openAiConversationId),
       env,
     });
 
@@ -292,19 +311,20 @@ async function handleGenerate(
     logGenerateAi("generate_ai_run_start", {
       conversaId,
       inputsCount: inputs.length,
-      hadPreviousResponse: Boolean(lastResponseId),
-      previousResponseChainReason: chainDecisionReason,
+      hasOpenAiConversationId: Boolean(openAiConversationId),
+      openAiSessionDecision: chainDecisionReason,
+      hasPreviousResponseRow: Boolean(lastResponseId),
       clientIdForAgents: Boolean(clientIdForAgents),
     });
 
     const result = await runImpl(
       {
         inputs,
-        conversationId: conversaId,
+        conversaId,
+        conversationId: openAiConversationId ?? undefined,
         organizationId: organizacaoId,
         clientId: clientIdForAgents,
         calendarConnectionId,
-        previousResponseId: lastResponseId ?? undefined,
         extra: pessoaId ? { pessoaId } : undefined,
       },
       { env },
@@ -323,7 +343,23 @@ async function handleGenerate(
         responseContent.trim().length === 0,
       responseIdPresent: Boolean(responseId),
       tokensUsed: tokensUsed ?? null,
+      openaiConversationId: result.openaiConversationId ?? null,
     });
+
+    if (
+      result.openaiConversationId &&
+      result.openaiConversationId !== openAiConversationId
+    ) {
+      await setActiveServiceOpenAiConversationId(
+        conversaId,
+        result.openaiConversationId,
+        env,
+      );
+      logGenerateAi("generate_ai_openai_conversation_persisted", {
+        conversaId,
+        openaiConversationId: result.openaiConversationId,
+      });
+    }
 
     if (
       typeof responseContent === "string" &&
@@ -409,8 +445,10 @@ async function handleGenerate(
         response_content: responseContent,
         mensagem_id: mensagemData.id,
         response_id: responseId,
+        openai_conversation_id: result.openaiConversationId,
         tokens_used: tokensUsed,
         had_previous_response: Boolean(lastResponseId),
+        resumed_openai_conversation: Boolean(openAiConversationId),
         is_new_service: isNewService,
         claimed_messages_count: pendingMessages.length,
         aggregated_messages_count: inputs.length,
@@ -418,6 +456,22 @@ async function handleGenerate(
       },
     });
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (/no tool output found/i.test(errMsg)) {
+      logGenerateAi(
+        "generate_ai_openai_responses_missing_tool_output",
+        {
+          conversaId,
+          openAiConversationId:
+            openAiSessionContext?.openAiConversationId ?? null,
+          lastResponseId: openAiSessionContext?.lastResponseId ?? null,
+          chainDecisionReason: openAiSessionContext?.chainDecisionReason ?? null,
+          errorMessagePreview: errMsg.slice(0, 800),
+          hint: "OpenAI Responses: existe function_call no encadeamento sem function_call_result correspondente. Ver logs run_agents_failed na mesma conversaId.",
+        },
+        "warn",
+      );
+    }
     next(error);
   }
 }
@@ -594,10 +648,10 @@ async function maybeSendInitialClientMessage(params: {
   clienteId?: string | undefined;
   numeroWhatsapp?: string | undefined;
   instancia?: string | undefined;
-  lastResponseId: string | null;
+  hasOpenAiConversation: boolean;
   env: EnvConfig;
 }): Promise<InitialMessageOutcome | undefined> {
-  if (params.lastResponseId || !params.clienteId) return undefined;
+  if (params.hasOpenAiConversation || !params.clienteId) return undefined;
 
   const supabase = getSupabaseClient(params.env);
 

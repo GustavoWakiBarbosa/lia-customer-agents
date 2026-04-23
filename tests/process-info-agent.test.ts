@@ -17,7 +17,7 @@ const env = {
 } as unknown as EnvConfig;
 
 const baseContext: AgentRunContext = {
-  conversationId: "conv-1",
+  conversaId: "conv-1",
   organizationId: "org-1",
   clientId: "cli-1",
   calendarConnectionId: undefined,

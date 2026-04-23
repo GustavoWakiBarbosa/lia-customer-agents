@@ -1,16 +1,32 @@
 import type { EnvConfig } from "../config/env.js";
+import { getActiveServiceConversationThread } from "../db/atendimentos.js";
 import { getSupabaseClient } from "../db/client.js";
 
 /**
- * Decide qual `previousResponseId` usar antes de chamar os agentes.
+ * Resolve o contexto de sessão OpenAI (`conv_...`) do atendimento ativo.
  *
- * Regra: o `responseId` é vinculado ao **atendimento ativo**. Se não houver
- * atendimento, é uma conversa nova (não traz contexto). Se houver, busca o
- * último response salvo desde o início do atendimento — assim conversas
- * reiniciadas começam realmente do zero, mesmo que existam responses antigos
- * na mesma conversa.
+ * Também retorna o último `response_id` do atendimento apenas para auditoria/
+ * métricas no banco; o fluxo principal de continuidade usa `Session`.
  */
 
+export interface ActiveServiceSessionContext {
+  atendimentoId: string | null;
+  openAiConversationId: string | null;
+  lastResponseId: string | null;
+  isNewService: boolean;
+  chainDecisionReason:
+    | "no_active_service"
+    | "active_service_without_openai_conversation"
+    | "active_service_with_openai_conversation"
+    | "no_response_row_for_service"
+    | "query_error_fallback_to_null"
+    | "response_found";
+}
+
+/**
+ * Compatibilidade legada: mantém o contrato antigo de `previousResponseId`
+ * para consumidores que ainda não migraram totalmente para Session.
+ */
 export interface LastResponseResult {
   lastResponseId: string | null;
   isNewService: boolean;
@@ -19,33 +35,6 @@ export interface LastResponseResult {
     | "no_response_row_for_service"
     | "query_error_fallback_to_null"
     | "response_found";
-}
-
-interface ActiveServiceRow {
-  id: string;
-  iniciado_em: string;
-  tipo_responsavel: string;
-}
-
-async function getActiveService(
-  conversaId: string,
-  env?: EnvConfig,
-): Promise<{ data: ActiveServiceRow | null; hadError: boolean }> {
-  const supabase = getSupabaseClient(env);
-  const { data, error } = await supabase
-    .from("whatsapp_atendimentos")
-    .select("id, iniciado_em, tipo_responsavel")
-    .eq("conversa_id", conversaId)
-    .is("finalizado_em", null)
-    .order("iniciado_em", { ascending: false })
-    .maybeSingle<ActiveServiceRow>();
-
-  if (error) {
-    console.error("❌ Erro ao buscar atendimento ativo:", error);
-    return { data: null, hadError: true };
-  }
-
-  return { data, hadError: false };
 }
 
 async function getLastResponseForService(
@@ -88,66 +77,109 @@ async function getLastResponseForService(
 function logPreviousResponseDecision(params: {
   conversaId: string;
   hasActiveService: boolean;
+  openAiConversationIdPresent: boolean;
   foundResponseRow: boolean;
   previousResponseIdPresent: boolean;
-  reason: LastResponseResult["chainDecisionReason"];
+  reason: ActiveServiceSessionContext["chainDecisionReason"];
 }): void {
   console.log(
     JSON.stringify({
       level: "info",
-      event: "previous_response_id_decision",
+      event: "openai_session_context_decision",
       ...params,
     }),
   );
 }
 
 /**
- * Retorna o `previousResponseId` adequado para a próxima rodada do agente.
- *
- * Se não há atendimento ativo, devolve `{ lastResponseId: null, isNewService: true }`
- * — o chamador deve tratar como primeira interação (greeting, etc).
+ * Retorna o contexto de sessão do atendimento ativo.
  */
-export async function getLastResponseIfActive(
+export async function getActiveServiceSessionContext(
   conversaId: string,
   env?: EnvConfig,
-): Promise<LastResponseResult> {
-  const activeServiceResult = await getActiveService(conversaId, env);
-  const activeService = activeServiceResult.data;
+): Promise<ActiveServiceSessionContext> {
+  const activeService = await getActiveServiceConversationThread(conversaId, env);
 
   if (!activeService) {
-    const reason: LastResponseResult["chainDecisionReason"] =
+    const reason: ActiveServiceSessionContext["chainDecisionReason"] =
       "no_active_service";
     logPreviousResponseDecision({
       conversaId,
       hasActiveService: false,
+      openAiConversationIdPresent: false,
       foundResponseRow: false,
       previousResponseIdPresent: false,
       reason,
     });
-    return { lastResponseId: null, isNewService: true, chainDecisionReason: reason };
+    return {
+      atendimentoId: null,
+      openAiConversationId: null,
+      lastResponseId: null,
+      isNewService: true,
+      chainDecisionReason: reason,
+    };
   }
 
   const responseResult = await getLastResponseForService(
     conversaId,
-    activeService.iniciado_em,
+    activeService.iniciadoEm,
     env,
   );
   const lastResponseId = responseResult.responseId;
 
-  const reason: LastResponseResult["chainDecisionReason"] =
-    responseResult.hadError
-      ? "query_error_fallback_to_null"
-      : lastResponseId
-        ? "response_found"
-        : "no_response_row_for_service";
+  const reason: ActiveServiceSessionContext["chainDecisionReason"] =
+    activeService.openAiConversationId
+      ? "active_service_with_openai_conversation"
+      : "active_service_without_openai_conversation";
 
   logPreviousResponseDecision({
     conversaId,
     hasActiveService: true,
+    openAiConversationIdPresent: Boolean(activeService.openAiConversationId),
     foundResponseRow: responseResult.foundRow,
     previousResponseIdPresent: Boolean(lastResponseId),
     reason,
   });
 
-  return { lastResponseId, isNewService: false, chainDecisionReason: reason };
+  if (responseResult.hadError) {
+    return {
+      atendimentoId: activeService.atendimentoId,
+      openAiConversationId: activeService.openAiConversationId,
+      lastResponseId: null,
+      isNewService: false,
+      chainDecisionReason: "query_error_fallback_to_null",
+    };
+  }
+
+  return {
+    atendimentoId: activeService.atendimentoId,
+    openAiConversationId: activeService.openAiConversationId,
+    lastResponseId,
+    isNewService: false,
+    chainDecisionReason: lastResponseId
+      ? "response_found"
+      : "no_response_row_for_service",
+  };
+}
+
+export async function getLastResponseIfActive(
+  conversaId: string,
+  env?: EnvConfig,
+): Promise<LastResponseResult> {
+  const ctx = await getActiveServiceSessionContext(conversaId, env);
+  const chainDecisionReason: LastResponseResult["chainDecisionReason"] =
+    ctx.chainDecisionReason === "no_active_service" ||
+      ctx.chainDecisionReason === "query_error_fallback_to_null" ||
+      ctx.chainDecisionReason === "response_found" ||
+      ctx.chainDecisionReason === "no_response_row_for_service"
+      ? ctx.chainDecisionReason
+      : ctx.lastResponseId
+        ? "response_found"
+        : "no_response_row_for_service";
+
+  return {
+    lastResponseId: ctx.lastResponseId,
+    isNewService: ctx.isNewService,
+    chainDecisionReason,
+  };
 }

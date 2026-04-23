@@ -1,5 +1,6 @@
 import { hostedMcpTool, type HostedMCPTool } from "@openai/agents";
 import type { EnvConfig } from "../config/env.js";
+import { logAgentLine } from "../runtime/atendimento-log.js";
 import type { AgentRunContext } from "../types.js";
 
 /**
@@ -40,7 +41,7 @@ export function buildLegisMcpHeaders(
 ): Record<string, string> {
   const { env, context } = params;
   const headers: Record<string, string> = {
-    "X-Conversation-Id": context.conversationId,
+    "X-Conversation-Id": context.conversaId,
     "X-Organization-Id": context.organizationId,
   };
 
@@ -76,11 +77,21 @@ export function buildLegisMcpTool(
     );
   }
 
+  const headers = buildLegisMcpHeaders(params);
+  const toolsLabel =
+    allowedTools && allowedTools.length > 0
+      ? allowedTools.join(", ")
+      : "(todas as tools expostas pelo servidor)";
+  logAgentLine(
+    params.context.conversaId,
+    `[MCP ${LEGIS_MCP_SERVER_LABEL}] url=${env.mcpServerUrl} allowedTools=${toolsLabel} headerNames=[${Object.keys(headers).join(", ")}]`,
+  );
+
   return hostedMcpTool({
     serverLabel: LEGIS_MCP_SERVER_LABEL,
     serverUrl: env.mcpServerUrl,
     serverDescription: LEGIS_MCP_SERVER_DESCRIPTION,
-    headers: buildLegisMcpHeaders(params),
+    headers,
     requireApproval: "never",
     ...(allowedTools && allowedTools.length > 0
       ? { allowedTools: [...allowedTools] }

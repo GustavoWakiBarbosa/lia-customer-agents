@@ -1,4 +1,5 @@
 import { Agent } from "@openai/agents";
+import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import type { EnvConfig } from "../config/env.js";
 import type { AgentRunContext } from "../types.js";
 import {
@@ -24,7 +25,7 @@ export function buildTriageAgent(
   return new Agent<AgentRunContext>({
     name: TRIAGE_AGENT_NAME,
     handoffDescription: TRIAGE_AGENT_HANDOFF_DESCRIPTION,
-    instructions: TRIAGE_AGENT_INSTRUCTIONS,
+    instructions: `${RECOMMENDED_PROMPT_PREFIX}\n\n${TRIAGE_AGENT_INSTRUCTIONS}`,
     model: params.env.aiModel,
     tools: [],
   });

@@ -1,3 +1,4 @@
+import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import type { ChatbotAiConfig } from "../../db/chatbotAiConfig.js";
 import {
   getCachedInstructions,
@@ -64,10 +65,12 @@ function composeInstructions(
   config: ChatbotAiConfig | null,
   hasCalendar: boolean,
 ): string {
+  const prefix = `${RECOMMENDED_PROMPT_PREFIX}\n\n`;
   const transhipment = hasCalendar ? getTranshipmentMenuInstructions() : "";
 
   if (!config) {
     return (
+      prefix +
       PROCESS_INFO_BASE_INSTRUCTIONS +
       PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS +
       transhipment
@@ -75,6 +78,7 @@ function composeInstructions(
   }
 
   return (
+    prefix +
     PROCESS_INFO_BASE_INSTRUCTIONS +
     buildStyleInstructions(config.tom_voz) +
     buildVocabularyInstructions(config.vocabulario) +

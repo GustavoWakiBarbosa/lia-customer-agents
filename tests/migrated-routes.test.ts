@@ -28,6 +28,7 @@ const fakeRunAgents = vi.fn(async () => ({
   output: "ok",
   agentUsed: "triage" as const,
   responseId: "resp_test",
+  openaiConversationId: "conv_openai_1",
   usage: { requests: 1, inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 }));
 

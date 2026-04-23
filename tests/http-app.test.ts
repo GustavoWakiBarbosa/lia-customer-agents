@@ -31,7 +31,7 @@ const env: EnvConfig = {
 
 const validBody: RunInput = {
   userMessage: "Oi, tudo bem?",
-  conversationId: "conv-1",
+  conversaId: "conv-1",
   organizationId: "org-1",
   clientId: "cli-1",
 };
@@ -49,6 +49,7 @@ function buildFakeRunAgents(output?: Partial<RunOutput>) {
     output: "Olá! Sou a Lia.",
     agentUsed: "triage",
     responseId: "resp_test_1",
+    openaiConversationId: "conv_openai_1",
     usage: {
       requests: 1,
       inputTokens: 10,
@@ -132,7 +133,7 @@ describe("POST /run", () => {
     expect(res.body.responseId).toBe("resp_test_1");
     expect(runAgentsImpl).toHaveBeenCalledTimes(1);
     expect(runAgentsImpl).toHaveBeenCalledWith(
-      expect.objectContaining({ conversationId: "conv-1" }),
+      expect.objectContaining({ conversaId: "conv-1" }),
       expect.objectContaining({ env }),
     );
   });

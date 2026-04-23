@@ -14,6 +14,12 @@ export interface EnsureActiveServiceResult {
   isNew: boolean;
 }
 
+export interface ActiveServiceConversationThread {
+  atendimentoId: string;
+  iniciadoEm: string;
+  openAiConversationId: string | null;
+}
+
 /**
  * Garante que a conversa tem um atendimento em andamento. Se não houver,
  * cria um do tipo `chatbot`. Retorna o id e se foi criado nesta chamada.
@@ -62,6 +68,61 @@ export async function ensureActiveService(
   }
 
   return { atendimentoId: novo.id, isNew: true };
+}
+
+/**
+ * Retorna o atendimento ativo mais recente da conversa com o thread OpenAI
+ * associado (quando já criado).
+ */
+export async function getActiveServiceConversationThread(
+  conversaId: string,
+  env?: EnvConfig,
+): Promise<ActiveServiceConversationThread | null> {
+  const supabase = getSupabaseClient(env);
+  const { data, error } = await supabase
+    .from("whatsapp_atendimentos")
+    .select("id, iniciado_em, openai_conversation_id")
+    .eq("conversa_id", conversaId)
+    .is("finalizado_em", null)
+    .order("iniciado_em", { ascending: false })
+    .maybeSingle<{
+      id: string;
+      iniciado_em: string;
+      openai_conversation_id: string | null;
+    }>();
+
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    atendimentoId: data.id,
+    iniciadoEm: data.iniciado_em,
+    openAiConversationId: data.openai_conversation_id,
+  };
+}
+
+/**
+ * Persiste/atualiza o `conv_...` do atendimento ativo da conversa.
+ */
+export async function setActiveServiceOpenAiConversationId(
+  conversaId: string,
+  openAiConversationId: string,
+  env?: EnvConfig,
+): Promise<void> {
+  const active = await getActiveServiceConversationThread(conversaId, env);
+  if (!active) {
+    throw new Error(
+      `Active service not found for conversaId=${conversaId} when persisting openai_conversation_id`,
+    );
+  }
+  const supabase = getSupabaseClient(env);
+  const { error } = await supabase
+    .from("whatsapp_atendimentos")
+    .update({
+      openai_conversation_id: openAiConversationId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", active.atendimentoId);
+  if (error) throw error;
 }
 
 /**

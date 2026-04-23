@@ -1,4 +1,7 @@
+import { Handoff } from "@openai/agents-core";
+import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import { describe, expect, it } from "vitest";
+import { cleanHandoffHistory } from "../src/agents/handoff-filters.js";
 import {
   buildOrchestratorAgent,
   buildOrchestratorInstructions,
@@ -13,7 +16,7 @@ const env: EnvConfig = {
 };
 
 const context: AgentRunContext = {
-  conversationId: "conv-1",
+  conversaId: "conv-1",
   organizationId: "org-1",
   clientId: "cli-1",
   calendarConnectionId: undefined,
@@ -33,6 +36,17 @@ describe("buildOrchestratorAgent", () => {
     expect(handoffNames).toEqual(["process_info", "triage"]);
   });
 
+  it("envolve cada handoff em `Handoff` com `cleanHandoffHistory` como inputFilter", () => {
+    const orchestrator = buildOrchestratorAgent({ env, context });
+
+    expect(orchestrator.handoffs.length).toBe(2);
+    for (const entry of orchestrator.handoffs) {
+      expect(entry).toBeInstanceOf(Handoff);
+      const ho = entry as Handoff;
+      expect(ho.inputFilter).toBe(cleanHandoffHistory);
+    }
+  });
+
   it("propagates the configured model to the orchestrator agent", () => {
     const orchestrator = buildOrchestratorAgent({ env, context });
     expect(orchestrator.model).toBe("gpt-test");
@@ -42,7 +56,7 @@ describe("buildOrchestratorAgent", () => {
 describe("buildOrchestratorInstructions", () => {
   it("injeta sinais de clientId e encadeamento OpenAI no texto", () => {
     const noClientNoChain = buildOrchestratorInstructions({
-      conversationId: "c1",
+      conversaId: "c1",
       organizationId: "o1",
       clientId: undefined,
       calendarConnectionId: undefined,
@@ -54,7 +68,7 @@ describe("buildOrchestratorInstructions", () => {
     expect(noClientNoChain).toMatch(/OpenAI[^\n]+: não/);
 
     const linkedWithChain = buildOrchestratorInstructions({
-      conversationId: "c1",
+      conversaId: "c1",
       organizationId: "o1",
       clientId: "p1",
       calendarConnectionId: undefined,
@@ -63,5 +77,17 @@ describe("buildOrchestratorInstructions", () => {
     });
     expect(linkedWithChain).toContain("clientId / pessoa identificada): sim");
     expect(linkedWithChain).toMatch(/OpenAI[^\n]+: sim/);
+  });
+
+  it("começa com o RECOMMENDED_PROMPT_PREFIX da SDK", () => {
+    const result = buildOrchestratorInstructions({
+      conversaId: "c1",
+      organizationId: "o1",
+      clientId: undefined,
+      calendarConnectionId: undefined,
+      extra: undefined,
+      continuesOpenAiAgentChain: false,
+    });
+    expect(result.startsWith(RECOMMENDED_PROMPT_PREFIX)).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
-import { Agent } from "@openai/agents";
+import { Agent, handoff } from "@openai/agents";
+import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import type { EnvConfig } from "../config/env.js";
 import { buildLegisMcpTool } from "../mcp/legis-mcp.js";
 import type { AgentRunContext } from "../types.js";
+import { cleanHandoffHistory } from "./handoff-filters.js";
 import { buildProcessInfoAgent } from "./process-info.agent.js";
 import { buildTriageAgent } from "./triage.agent.js";
 
@@ -28,14 +30,16 @@ export function buildOrchestratorInstructions(
   const clientLinked = Boolean(ctx.clientId);
   const chain = ctx.continuesOpenAiAgentChain;
 
-  return `Você é Lia, assistente de atendimento de um escritório de advocacia que atua exclusivamente com Direito do Trabalho.
+  return `${RECOMMENDED_PROMPT_PREFIX}
+
+Você é Lia, assistente de atendimento de um escritório de advocacia que atua exclusivamente com Direito do Trabalho.
 
 Sua função é ser o primeiro ponto de contato: saudar, entender quem está falando, identificar a intenção e decidir se continua conduzindo a conversa ou se transfere para um especialista.
 
 ## Sinais automáticos (obrigatório considerar junto com as mensagens do cliente)
 - Cliente já vinculado ao cadastro do escritório (clientId / pessoa identificada): ${clientLinked ? "sim" : "não"}
-- Encadeamento desta execução com a resposta anterior da API de agentes OpenAI (previousResponseId / mesma cadeia técnica do SDK): ${chain ? "sim" : "não"}
-  * "não" significa apenas que esta chamada **não** continua um response_id anterior neste run. O cliente pode já ter muitas interações no WhatsApp ou em outros canais; não interprete como "primeira interação" humana.
+- Encadeamento desta execução com uma sessão prévia da OpenAI (\`conv_...\` em OpenAIConversationsSession): ${chain ? "sim" : "não"}
+  * "não" significa apenas que esta chamada **não** retomou um \`conv_...\` anterior neste run. O cliente pode já ter muitas interações no WhatsApp ou em outros canais; não interprete como "primeira interação" humana.
 
 ## Quando responder diretamente (sem handoff)
 - Saudações genéricas ("oi", "olá", "bom dia").
@@ -53,6 +57,16 @@ Sua função é ser o primeiro ponto de contato: saudar, entender quem está fal
 - Cliente vinculado (clientId = sim) pergunta sobre andamento, status ou detalhe de processo já existente.
 - Cliente vinculado menciona número de processo ou pede atualização de caso em curso.
 - Cliente afirmou ser cliente, você confirmou o vínculo via \`getPerson\`, e a intenção é consulta processual.
+
+## REGRA CRÍTICA DE HANDOFF (leia com atenção)
+Transferir NÃO é escrever uma mensagem. Transferir é executar a ferramenta interna de handoff correspondente (\`transfer_to_triage\` ou \`transfer_to_process_info\`). O próximo agente se apresenta sozinho — você não precisa, não deve, e não pode anunciar a transferência para o cliente.
+
+Regras obrigatórias:
+- Quando decidir transferir, execute a ferramenta de handoff **imediatamente**, sem produzir nenhum texto nessa etapa. Nenhum texto, nem mesmo "Um momento".
+- NÃO escreva frases como: "vou te transferir", "aguarde um momento enquanto transfiro", "já acionei o atendimento", "estou passando você para", "um instante, por favor", "vou encaminhar", "vou passar seu atendimento para", "chamando o atendente".
+- Se o cliente concordou em ser transferido ou já pediu o assunto específico do especialista, a resposta correta é executar o handoff, não confirmar por texto.
+- Se você já executou um handoff em um turno anterior e voltou a ser invocada sem novo pedido do cliente, isso significa que o especialista já respondeu — não repita a transferência.
+- Se por algum motivo a ferramenta de handoff falhar, informe apenas que houve uma falha ao encaminhar e peça para o cliente aguardar um instante. Nunca simule que a transferência foi concluída.
 
 ## Ferramenta disponível: getPerson
 - Use \`getPerson\` apenas para localizar cadastro por CPF/CNPJ quando o cliente afirmar ser cliente e ainda não houver vínculo (clientId = não).
@@ -93,9 +107,7 @@ export interface BuildOrchestratorAgentParams {
  * precisa dos headers contextuais do MCP — e é mais simples recriar a árvore
  * inteira do que mutar agentes em cache.
  */
-export function buildOrchestratorAgent(
-  params: BuildOrchestratorAgentParams,
-): Agent<AgentRunContext> {
+export function buildOrchestratorAgent(params: BuildOrchestratorAgentParams) {
   const triageAgent = buildTriageAgent({ env: params.env });
   const processInfoAgent = buildProcessInfoAgent({
     env: params.env,
@@ -108,14 +120,17 @@ export function buildOrchestratorAgent(
     allowedTools: ORCHESTRATOR_ALLOWED_MCP_TOOLS,
   });
 
-  return new Agent<AgentRunContext>({
+  return Agent.create({
     name: ORCHESTRATOR_AGENT_NAME,
-    instructions: async (runContext) => {
-      const ctx = runContext.context;
-      return buildOrchestratorInstructions(ctx);
-    },
+    instructions: async (runContext) =>
+      buildOrchestratorInstructions(
+        runContext.context as AgentRunContext,
+      ),
     model: params.env.aiModel,
-    handoffs: [triageAgent, processInfoAgent],
+    handoffs: [
+      handoff(triageAgent, { inputFilter: cleanHandoffHistory }),
+      handoff(processInfoAgent, { inputFilter: cleanHandoffHistory }),
+    ],
     tools: [legisMcp],
   });
 }

@@ -8,7 +8,7 @@ import type { EnvConfig } from "../src/config/env.js";
 import type { AgentRunContext } from "../src/types.js";
 
 const baseContext: AgentRunContext = {
-  conversationId: "conv-1",
+  conversaId: "conv-1",
   organizationId: "org-1",
   clientId: "cli-1",
   calendarConnectionId: undefined,

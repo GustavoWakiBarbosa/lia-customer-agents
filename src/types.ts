@@ -33,18 +33,26 @@ export type AgentInputItem = z.infer<typeof AgentInputItemSchema>;
  * `inputs` (caminho novo, usado pelo `generate-ai-response` para preservar a
  * separação semântica das mensagens agregadas — texto + transcrições).
  *
- * `organizationId` e `conversationId` são obrigatórios. `clientId` é opcional
- * (pessoa ainda não vinculada no cadastro). O **orquestrador LLM** combina
- * `clientId`, `previousResponseId` e o texto do usuário para decidir o handoff
- * entre triagem e consulta processual.
+ * `organizationId` e `conversaId` (plataforma/Supabase) são obrigatórios.
+ * `clientId` é opcional (pessoa ainda não vinculada no cadastro).
+ *
+ * `conversationId` é o thread OpenAI (`conv_...`) usado para retomar
+ * `OpenAIConversationsSession`. Este campo NÃO é o mesmo id da conversa
+ * da plataforma.
  */
 export const RunInputSchema = z
   .object({
     userMessage: z.string().min(1).optional(),
     inputs: z.array(AgentInputItemSchema).min(1).optional(),
 
-    /** Identificador da conversa do canal (ex.: WhatsApp). */
-    conversationId: z.string().min(1),
+    /** Identificador da conversa do canal/plataforma (ex.: WhatsApp). */
+    conversaId: z.string().min(1),
+
+    /**
+     * Thread da OpenAI Conversations API (`conv_...`) para retomar a Session.
+     * Quando ausente, uma nova sessão pode ser criada.
+     */
+    conversationId: z.string().min(1).optional(),
 
     /** Identificador da organização/escritório. */
     organizationId: z.string().min(1),
@@ -64,12 +72,6 @@ export const RunInputSchema = z
 
     /** Conexão de calendário do escritório, quando aplicável (agendamentos). */
     calendarConnectionId: z.string().min(1).optional(),
-
-    /**
-     * `response_id` retornado pela OpenAI na rodada anterior. Quando presente,
-     * é usado para encadear a conversa via `previousResponseId` do SDK.
-     */
-    previousResponseId: z.string().min(1).optional(),
 
     /**
      * Extras passados pelo chamador (ex.: nome do cliente). Não interferem no
@@ -109,6 +111,9 @@ export interface RunOutput {
   /** `response_id` retornado pela OpenAI (deve ser persistido pela edge function). */
   responseId: string | undefined;
 
+  /** Thread OpenAI (`conv_...`) efetivo da sessão usada neste run. */
+  openaiConversationId: string | undefined;
+
   /** Métricas agregadas do run. */
   usage: RunUsage;
 }
@@ -119,17 +124,15 @@ export interface RunOutput {
  * permitir que ferramentas acessem identificadores do tenant.
  */
 export interface AgentRunContext {
-  conversationId: string;
+  conversaId: string;
   organizationId: string;
   /** Definido quando a conversa já tem `pessoa_id` no banco. */
   clientId: string | undefined;
   calendarConnectionId: string | undefined;
   extra: Record<string, unknown> | undefined;
   /**
-   * `true` quando este run encadeia `previousResponseId` da OpenAI (continua
-   * a mesma cadeia técnica de respostas do SDK). `false` só indica que **não**
-   * há esse encadeamento nesta chamada — não significa primeira mensagem do
-   * cliente nem ausência de histórico no canal.
+   * `true` quando este run retoma um thread OpenAI prévio (`conv_...`) via
+   * `OpenAIConversationsSession({ conversationId })`.
    */
   continuesOpenAiAgentChain: boolean;
 }

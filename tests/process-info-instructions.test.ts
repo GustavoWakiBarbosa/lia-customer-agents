@@ -1,3 +1,4 @@
+import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ChatbotAiConfig } from "../src/db/chatbotAiConfig.js";
 import {
@@ -24,7 +25,7 @@ function makeConfig(overrides: Partial<ChatbotAiConfig> = {}): ChatbotAiConfig {
 }
 
 describe("buildProcessInfoInstructions — sem config", () => {
-  it("retorna BASE + DEFAULT_STYLE quando config é null e não há calendário", () => {
+  it("retorna PREFIX + BASE + DEFAULT_STYLE quando config é null e não há calendário", () => {
     const result = buildProcessInfoInstructions({
       config: null,
       calendarConnectionId: undefined,
@@ -33,8 +34,11 @@ describe("buildProcessInfoInstructions — sem config", () => {
     expect(result).toContain(PROCESS_INFO_BASE_INSTRUCTIONS);
     expect(result).toContain(PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS);
     expect(result).not.toContain(TRANSHIPMENT_HEADING);
+    expect(result.startsWith(RECOMMENDED_PROMPT_PREFIX)).toBe(true);
     expect(result).toBe(
-      PROCESS_INFO_BASE_INSTRUCTIONS + PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS,
+      `${RECOMMENDED_PROMPT_PREFIX}\n\n` +
+        PROCESS_INFO_BASE_INSTRUCTIONS +
+        PROCESS_INFO_DEFAULT_STYLE_INSTRUCTIONS,
     );
   });
 
@@ -144,6 +148,23 @@ describe("buildProcessInfoInstructions — tipo_atualizacao", () => {
     });
 
     expect(result).toContain("termos sensíveis ()");
+  });
+});
+
+describe("PROCESS_INFO_BASE_INSTRUCTIONS — blocos críticos", () => {
+  it("contém o bloco 'ENTRADA VIA HANDOFF (CONTINUIDADE)' com aberturas banidas", () => {
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain(
+      "ENTRADA VIA HANDOFF (CONTINUIDADE)",
+    );
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain('"Sou a Lia"');
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain('"Em que posso te ajudar?"');
+  });
+
+  it("contém o bloco 'AGIR ANTES DE FALAR' com 'Frases banidas de promessa'", () => {
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain("AGIR ANTES DE FALAR");
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain(
+      "Frases banidas de promessa",
+    );
   });
 });
 
