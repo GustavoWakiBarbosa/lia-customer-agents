@@ -27,6 +27,11 @@ import {
   type RunUsage,
 } from "../types.js";
 import {
+  appendAgentRunRawLogLine,
+  buildAgentRunRawLogRecord,
+  resolveAgentRunRawLogPath,
+} from "./agent-run-raw-log.js";
+import {
   logAgentLine,
   logAgentTextBlock,
   warnAgentLine,
@@ -69,6 +74,7 @@ function pluralize(n: number, singular: string, plural: string): string {
 const PROMISE_TRIGGERS: ReadonlyArray<string> = [
   "vou consultar",
   "vou verificar",
+  "vou buscar",
   "vou checar",
   "vou puxar",
   "vou dar uma olhada",
@@ -546,6 +552,19 @@ export async function runAgents(
   }
 
   const openaiConversationId = await session.getSessionId();
+
+  const rawLogPath = resolveAgentRunRawLogPath();
+  if (rawLogPath) {
+    const rawRecord = buildAgentRunRawLogRecord({
+      conversaId: input.conversaId,
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      openaiConversationId,
+      model: env.aiModel,
+      result,
+    });
+    await appendAgentRunRawLogLine(rawLogPath, rawRecord);
+  }
 
   const counts = summarizeAgentRunPipeline(conversationId, result.newItems);
   const output =

@@ -166,6 +166,14 @@ describe("PROCESS_INFO_BASE_INSTRUCTIONS — blocos críticos", () => {
       "Frases banidas de promessa",
     );
   });
+
+  it("proíbe pedir tribunal/vara/cidade como pré-requisito antes das tools", () => {
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain(
+      "Dados que as tools aceitam",
+    );
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain("tribunal");
+    expect(PROCESS_INFO_BASE_INSTRUCTIONS).toContain("getLatelyProcess");
+  });
 });
 
 describe("buildProcessInfoInstructions — composição completa", () => {

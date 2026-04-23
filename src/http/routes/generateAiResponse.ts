@@ -51,7 +51,7 @@ function logGenerateAi(
 /** Mensagem inicial enviada quando o cliente já está cadastrado e a conversa começa. */
 function buildInitialClientMessage(nome: string): string {
   const trimmed = nome.trim();
-  return `Olá${trimmed ? `, ${trimmed}` : ""}! Eu me chamo Lia, sou assistente virtual do escritório. Encontrei seu cadastro em nosso sistema, só um instante enquanto localizo os processos vinculados ao seu cadastro.`;
+  return `Olá${trimmed ? `, ${trimmed}` : ""}! Eu me chamo Lia, assistente virtual do escritório. Encontrei seu cadastro no nosso sistema. Como posso te ajudar hoje?`;
 }
 
 interface ClaimedPendingMessage {

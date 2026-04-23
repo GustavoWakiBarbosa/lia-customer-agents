@@ -90,4 +90,18 @@ describe("buildOrchestratorInstructions", () => {
     });
     expect(result.startsWith(RECOMMENDED_PROMPT_PREFIX)).toBe(true);
   });
+
+  it("deixa explícito que consulta de processo por CPF é handoff para process_info, não promessa na recepção", () => {
+    const result = buildOrchestratorInstructions({
+      conversaId: "c1",
+      organizationId: "o1",
+      clientId: "p1",
+      calendarConnectionId: undefined,
+      extra: undefined,
+      continuesOpenAiAgentChain: false,
+    });
+    expect(result).toContain("getLatelyProcess");
+    expect(result).toContain("transfer_to_process_info");
+    expect(result).toContain("tribunal, vara, cidade");
+  });
 });

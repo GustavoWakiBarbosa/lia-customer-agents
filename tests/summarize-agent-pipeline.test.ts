@@ -89,6 +89,19 @@ describe("summarizeAgentRunPipeline — soft promise warning", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it("avisa quando o texto contém 'vou buscar' sem tool no mesmo run", () => {
+    const items = [
+      makeMessage(
+        "orchestrator",
+        "Consigo sim. Vou buscar pelo CPF e já te retorno.",
+      ),
+    ];
+
+    summarizeAgentRunPipeline("conv-test", items);
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("avisa por agente: orchestrator promete sem tool, process_info promete com tool", () => {
     const items = [
       makeMessage("orchestrator", "Aguarde um momento, vou te transferir."),
