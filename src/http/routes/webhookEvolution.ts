@@ -308,7 +308,7 @@ async function processMessage(
   return state;
 }
 
-const UNSUPPORTED_MEDIA_LABEL: Record<string, string> = {
+const MEDIA_LABEL: Record<string, string> = {
   imageMessage: "imagens",
   videoMessage: "vídeos",
   documentMessage: "documentos",
@@ -476,24 +476,10 @@ async function processUnsupportedMediaMessage(
     atendimentoIdPersist,
   );
 
-  state.shouldEnqueueToAI = false;
-  state.messageContent = "";
-
-  if (
-    !body.data.key.fromMe &&
-    conversa.status === "em_atendimento_chatbot"
-  ) {
-    const label = UNSUPPORTED_MEDIA_LABEL[messageType] ?? "este tipo de arquivo";
-    const message = `Desculpe, no momento não consigo processar ${label}. Por favor, envie sua mensagem em texto para que eu possa te ajudar! 😊`;
-    await sendAndStoreAutoReply(
-      instanceName,
-      phoneNumber,
-      conversa,
-      organizationId,
-      message,
-      env,
-    );
-  }
+  const captionText = caption.trim();
+  const label = MEDIA_LABEL[messageType] ?? "arquivo";
+  state.messageContent = captionText || `[${label} enviado]`;
+  state.shouldEnqueueToAI = !body.data.key.fromMe;
 }
 
 async function sendAndStoreAutoReply(

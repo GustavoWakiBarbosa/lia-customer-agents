@@ -109,6 +109,17 @@ async function buildAgentInputsNewAtendimentoPendingOnly(params: {
         content: pending.conteudo,
         type: "message",
       });
+      continue;
+    }
+
+    if (pending.anexo_url && messageType !== "texto") {
+      items.push(
+        buildUserInputFromMedia({
+          tipoMensagem: messageType,
+          anexoUrl: pending.anexo_url,
+          caption: pending.conteudo,
+        }),
+      );
     }
   }
 
@@ -138,6 +149,34 @@ interface ClaimedPendingMessage {
   tipo_mensagem: string | null;
   anexo_url: string | null;
   created_at: string;
+}
+
+function buildUserInputFromMedia(params: {
+  tipoMensagem: string;
+  anexoUrl: string;
+  caption?: string | null | undefined;
+}): AgentInputItem {
+  const caption = params.caption?.trim() || "";
+  const text = caption.length > 0
+    ? caption
+    : "Analise o arquivo enviado e responda com base no conteúdo.";
+
+  /** Campos em camelCase: o bridge `@openai/agents-openai` ignora `file_url` / `image_url` no item. */
+  const contentParts: Array<Record<string, string>> = [
+    { type: "input_text", text },
+  ];
+
+  if (params.tipoMensagem === "image") {
+    contentParts.push({ type: "input_image", imageUrl: params.anexoUrl });
+  } else {
+    contentParts.push({ type: "input_file", fileUrl: params.anexoUrl });
+  }
+
+  return {
+    role: "user",
+    content: contentParts,
+    type: "message",
+  };
 }
 
 interface GenerateAiRequestBody {
@@ -681,6 +720,14 @@ async function whatsappRowToAgentInput(
     return content
       ? { role, content, type: "message" as const }
       : null;
+  }
+
+  if (row.remetente === "cliente" && row.anexo_url && tipo !== "texto") {
+    return buildUserInputFromMedia({
+      tipoMensagem: tipo,
+      anexoUrl: row.anexo_url,
+      caption: row.conteudo,
+    });
   }
 
   const text = row.conteudo?.trim() ?? "";

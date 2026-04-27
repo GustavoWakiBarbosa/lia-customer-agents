@@ -26,7 +26,10 @@ export type AgentId = z.infer<typeof AgentIdSchema>;
 export const AgentInputItemSchema = z
   .object({
     role: z.enum(["user", "assistant", "system"]),
-    content: z.string().min(1),
+    content: z.union([
+      z.string().min(1),
+      z.array(z.record(z.string(), z.unknown())).min(1),
+    ]),
     type: z.literal("message").optional(),
   })
   .passthrough();
