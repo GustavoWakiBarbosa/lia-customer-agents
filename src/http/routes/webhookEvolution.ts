@@ -10,6 +10,7 @@ import {
   resolveAtendimentoIdForPersistedMessage,
   transicionarParaAtendimentoWhatsApp,
 } from "../../db/atendimentos.js";
+import { getChatbotTipoTriagem } from "../../db/chatbotAiConfig.js";
 import { getOrganizationByInstanceName } from "../../db/instances.js";
 import {
   saveChatbotMessage,
@@ -114,6 +115,18 @@ async function handleWebhook(
     res.status(404).json({
       error: "Organization not found for instance",
       instance: body.instance,
+    });
+    return;
+  }
+
+  if (
+    !body.data.key.fromMe &&
+    (await getChatbotTipoTriagem(organizationId, deps.env)) === "sem_triagem"
+  ) {
+    res.status(200).json({
+      message:
+        "Message ignored — organization chatbot tipo_triagem is sem_triagem",
+      organizationId,
     });
     return;
   }

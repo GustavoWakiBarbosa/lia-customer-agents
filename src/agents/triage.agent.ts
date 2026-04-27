@@ -10,13 +10,19 @@ import { buildAgentTemporalContextSection } from "./agent-temporal-context.js";
 import { buildTriageTrabalhistaAgent } from "./triage-trabalhista.agent.js";
 import {
   TRIAGE_AGENT_HANDOFF_DESCRIPTION,
-  TRIAGE_AGENT_INSTRUCTIONS,
+  TRIAGE_AGENT_HANDOFF_DESCRIPTION_SIMPLES,
   TRIAGE_AGENT_NAME,
+  buildTriageAgentInstructions,
 } from "./instructions/triage.instructions.js";
 
 export interface BuildTriageAgentParams {
   readonly env: EnvConfig;
   readonly context: AgentRunContext;
+  /**
+   * Quando `false`, não registra handoffs para triagens especialistas
+   * (`tipo_triagem` = `simples` na `chatbot_ai_config`).
+   */
+  readonly specialistHandoffs?: boolean;
 }
 
 /**
@@ -27,26 +33,35 @@ export interface BuildTriageAgentParams {
 export function buildTriageAgent(
   params: BuildTriageAgentParams,
 ): Agent<AgentRunContext> {
-  const triageTrabalhistaAgent = buildTriageTrabalhistaAgent({
-    env: params.env,
-    context: params.context,
-  });
+  const specialistHandoffs = params.specialistHandoffs !== false;
+  const triageTrabalhistaAgent = specialistHandoffs
+    ? buildTriageTrabalhistaAgent({
+        env: params.env,
+        context: params.context,
+      })
+    : null;
   const legisMcp = buildLegisMcpTool({
     env: params.env,
     context: params.context,
     allowedTools: ["concluir_triagem"],
   });
 
+  const instructionsBody = buildTriageAgentInstructions(specialistHandoffs);
+
   return new Agent<AgentRunContext>({
     name: TRIAGE_AGENT_NAME,
-    handoffDescription: TRIAGE_AGENT_HANDOFF_DESCRIPTION,
-    instructions: `${RECOMMENDED_PROMPT_PREFIX}\n\n${buildAgentTemporalContextSection()}\n\n${TRIAGE_AGENT_INSTRUCTIONS}`,
+    handoffDescription: specialistHandoffs
+      ? TRIAGE_AGENT_HANDOFF_DESCRIPTION
+      : TRIAGE_AGENT_HANDOFF_DESCRIPTION_SIMPLES,
+    instructions: `${RECOMMENDED_PROMPT_PREFIX}\n\n${buildAgentTemporalContextSection()}\n\n${instructionsBody}`,
     model: params.env.aiModel,
-    handoffs: [
-      handoff(triageTrabalhistaAgent, {
-        inputFilter: removeAllTools,
-      }),
-    ],
+    handoffs: triageTrabalhistaAgent
+      ? [
+          handoff(triageTrabalhistaAgent, {
+            inputFilter: removeAllTools,
+          }),
+        ]
+      : [],
     tools: [legisMcp],
   });
 }

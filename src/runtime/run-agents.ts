@@ -15,6 +15,7 @@ import { PROCESS_INFO_AGENT_NAME } from "../agents/instructions/process-info.ins
 import { TRIAGE_AGENT_NAME } from "../agents/instructions/triage.instructions.js";
 import { TRIAGE_TRABALHISTA_AGENT_NAME } from "../agents/instructions/triage-trabalhista.instructions.js";
 import { loadEnv, type EnvConfig } from "../config/env.js";
+import { getChatbotTipoTriagem } from "../db/chatbotAiConfig.js";
 import {
   RunInputSchema,
   type AgentId,
@@ -386,6 +387,13 @@ export async function runAgents(
     : (input.userMessage as string);
   const runInput = normalizeRunInputForOpenAiResponsesModel(runInputRaw);
 
+  const tipoTriagem = await getChatbotTipoTriagem(input.organizationId, env);
+  if (tipoTriagem === "sem_triagem") {
+    throw new Error(
+      "tipo_triagem=sem_triagem: execução de agentes não permitida para esta organização",
+    );
+  }
+
   const runner = new Runner();
   const conversationId = input.conversaId;
   const inputsCount = Array.isArray(input.inputs) ? input.inputs.length : 1;
@@ -396,7 +404,11 @@ export async function runAgents(
     ? `agente responsável no atendimento (persistido): ${context.agenteResponsavelAtendimento}`
     : "sem agente responsável persistido no contexto";
 
-  const orchestrator = buildOrchestratorAgent({ env, context });
+  const orchestrator = buildOrchestratorAgent({
+    env,
+    context,
+    triageSpecialistHandoffs: tipoTriagem === "especialista",
+  });
 
   console.log("");
   logAgentLine(

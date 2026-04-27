@@ -2,7 +2,11 @@ import { RECOMMENDED_PROMPT_PREFIX } from "@openai/agents-core/extensions";
 import { describe, expect, it } from "vitest";
 import { buildTriageAgent } from "../src/agents/triage.agent.js";
 import { buildTriageTrabalhistaAgent } from "../src/agents/triage-trabalhista.agent.js";
-import { TRIAGE_AGENT_INSTRUCTIONS } from "../src/agents/instructions/triage.instructions.js";
+import {
+  TRIAGE_AGENT_INSTRUCTIONS,
+  TRIAGE_AGENT_SIMPLE_INSTRUCTIONS,
+  buildTriageAgentInstructions,
+} from "../src/agents/instructions/triage.instructions.js";
 import { TRIAGE_TRABALHISTA_AGENT_INSTRUCTIONS } from "../src/agents/instructions/triage-trabalhista.instructions.js";
 import type { EnvConfig } from "../src/config/env.js";
 import type { AgentRunContext } from "../src/types.js";
@@ -22,7 +26,7 @@ const context: AgentRunContext = {
   agenteResponsavelAtendimento: undefined,
 };
 
-describe("TRIAGE_AGENT_INSTRUCTIONS — triagem simples/central", () => {
+describe("TRIAGE_AGENT_INSTRUCTIONS — modo especialista (com handoffs)", () => {
   it("posiciona a regra de continuidade no topo, antes das demais regras", () => {
     const continuityIdx = TRIAGE_AGENT_INSTRUCTIONS.indexOf(
       "ENTRADA VIA HANDOFF (CONTINUIDADE)",
@@ -45,6 +49,27 @@ describe("TRIAGE_AGENT_INSTRUCTIONS — triagem simples/central", () => {
   });
 });
 
+describe("TRIAGE_AGENT_SIMPLE_INSTRUCTIONS — modo simples (sem handoffs)", () => {
+  it("buildTriageAgentInstructions aponta para a constante correta", () => {
+    expect(buildTriageAgentInstructions(false)).toBe(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS);
+    expect(buildTriageAgentInstructions(true)).toBe(TRIAGE_AGENT_INSTRUCTIONS);
+  });
+
+  it("não inclui bloco de orquestração para especialista nem checklist de handoff", () => {
+    expect(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS).not.toContain(
+      "REGRA CRÍTICA: ORQUESTRAÇÃO PARA ESPECIALISTA",
+    );
+    expect(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS).not.toContain(
+      "Se havia especialista aplicável, fiz handoff sem texto antes?",
+    );
+  });
+
+  it("define condução única no agente e proíbe transferência interna", () => {
+    expect(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS).toContain("Sua função nesta configuração:");
+    expect(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS).toContain("é proibido");
+  });
+});
+
 describe("buildTriageAgent", () => {
   it("prepara as instruções com RECOMMENDED_PROMPT_PREFIX e mantém o corpo da triagem", () => {
     const agent = buildTriageAgent({ env, context });
@@ -56,6 +81,18 @@ describe("buildTriageAgent", () => {
     expect(text).toContain(TRIAGE_AGENT_INSTRUCTIONS);
     expect(agent.handoffs.length).toBe(1);
     expect(agent.tools.length).toBe(1);
+  });
+
+  it("modo sem handoffs usa TRIAGE_AGENT_SIMPLE_INSTRUCTIONS", () => {
+    const agent = buildTriageAgent({
+      env,
+      context,
+      specialistHandoffs: false,
+    });
+    const text = agent.instructions as string;
+    expect(text).toContain(TRIAGE_AGENT_SIMPLE_INSTRUCTIONS);
+    expect(text).not.toContain("REGRA CRÍTICA: ORQUESTRAÇÃO PARA ESPECIALISTA");
+    expect(agent.handoffs.length).toBe(0);
   });
 });
 

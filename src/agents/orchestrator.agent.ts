@@ -132,6 +132,11 @@ Regras obrigatórias:
 export interface BuildOrchestratorAgentParams {
   readonly env: EnvConfig;
   readonly context: AgentRunContext;
+  /**
+   * Quando `false`, a triagem central não expõe handoffs para especialistas
+   * (alinha a `chatbot_ai_config.tipo_triagem` = `simples`).
+   */
+  readonly triageSpecialistHandoffs?: boolean;
 }
 
 /**
@@ -145,6 +150,7 @@ export function buildOrchestratorAgent(params: BuildOrchestratorAgentParams) {
   const triageAgent = buildTriageAgent({
     env: params.env,
     context: params.context,
+    specialistHandoffs: params.triageSpecialistHandoffs !== false,
   });
   const processInfoAgent = buildProcessInfoAgent({
     env: params.env,

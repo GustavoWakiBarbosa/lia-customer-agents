@@ -28,6 +28,7 @@ import {
   type ChatbotQueuePayload,
 } from "../../services/queueService.js";
 import { resolveWhatsAppInstance } from "../../services/whatsappInstanceResolver.js";
+import { getChatbotTipoTriagem } from "../../db/chatbotAiConfig.js";
 import { runAgents } from "../../runtime/run-agents.js";
 import type { AgentId, AgentInputItem } from "../../types.js";
 
@@ -259,9 +260,9 @@ async function handleGenerate(
 
     const { data: conversa, error: conversaError } = await supabase
       .from("whatsapp_conversas")
-      .select("status")
+      .select("status, organization_id")
       .eq("id", conversaId)
-      .single<{ status: string }>();
+      .single<{ status: string; organization_id: string }>();
 
     if (conversaError) {
       console.error("❌ Erro ao buscar status da conversa:", conversaError);
